@@ -1,47 +1,123 @@
-RBAC on Postgres Flexi Server
-•	Creation of the role <read-only>:
-query: CREATE ROLE <role-name >;
-•	Grant connects privilege to db for the role-name given
-query: GRANT CONNECT ON DATABASE “<db-name>” TO <role-name >;
-•	If there is a need to create a schema, if it is already created can skip this step:
-query: CREATE SCHEMA <Schema-name>;
-•	Grant necessary privilege on the schema for the role given:
-query: 
-	GRANT USAGE ON SCHEMA <schema-name> TO <role-name>
-	GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA <schema-name> TO <role-name>;
-	ALTER DEFAULT PRIVILEGES IN SCHEMA <schema-name> GRANT SELECT, , INSERT, UPDATE ON TABLES to <role-name>
-•	Creation of the user:
-query: CREATE USER <username> WITH PASSWORD '<password>';
-•	Granting role to the Users:
-query: GRANT <role-name> to <Username>;
+Here’s the updated documentation including the **backup and restore note with the failure due to RBAC restrictions**, along with guidance on how to implement it correctly:
 
-•	Revoke public access from the DB:
-query: REVOKE CONNECT ON DATABASE “<db-name>” FROM PUBLIC.
-	The above Query will restrict connections to other databases. Repeat this for each additional database (e.g., db, aggregate_scanning, i4qdb, etc.) for which we want to restrict access. This Query revokes the default connection privileges from the public role for those databases, except for the database where we are creating the users.
+---
 
-	When we revoke connect privileges from the public role for other users, it restricts access for those users but does not impact the admin user'(postgres) ability to connect. The admin user will still retain full access to all databases.
+## **RBAC Configuration on Azure PostgreSQL Flexible Server**
 
-Note: After assigning the roles to the users; Kindly change the username and password for the respective DB secrets from the application level and share the connection strings .
+### **1. Role Creation (e.g., Read-Only Role)**
 
+```sql
+CREATE ROLE <role_name>;
+```
 
-Created the roles, user and assignment by using the below queries:
+### **2. Grant Database Connect Privilege**
 
-CREATE ROLE <rolename>;
-GRANT CONNECT ON DATABASE <db-name> TO <rolename>;
+```sql
+GRANT CONNECT ON DATABASE <db_name> TO <role_name>;
+```
 
-GRANT USAGE ON SCHEMA public TO <rolename>;
-GRANT SELECT,INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO <rolename>;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT, UPDATE ON TABLES to <rolename>;
+### **3. Schema Creation (If Not Already Created)**
 
+```sql
+CREATE SCHEMA <schema_name>;
+```
 
-CREATE USER <username> WITH PASSWORD <password>;
-GRANT <role-name> to <user-name>;
+### **4. Grant Privileges on the Schema**
 
-On the Sequences and routines in schemas :
+```sql
+GRANT USAGE ON SCHEMA <schema_name> TO <role_name>;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA <schema_name> TO <role_name>;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA <schema_name> 
+GRANT SELECT, INSERT, UPDATE ON TABLES TO <role_name>;
+```
+
+---
+
+### **5. Create Application User**
+
+```sql
+CREATE USER <username> WITH PASSWORD '<password>';
+```
+
+### **6. Assign Role to User**
+
+```sql
+GRANT <role_name> TO <username>;
+```
+
+---
+
+### **7. Restrict Public Access**
+
+```sql
+REVOKE CONNECT ON DATABASE <db_name> FROM PUBLIC;
+```
+
+> Repeat this for each restricted database.
+
+---
+
+### **8. Grant Privileges for Sequences and Routines (if required)**
+
+```sql
 GRANT ALL ON ALL SEQUENCES IN SCHEMA supabase_functions TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions 
+GRANT ALL ON SEQUENCES TO postgres;
+
 GRANT ALL ON ALL ROUTINES IN SCHEMA supabase_functions TO postgres;
-ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON SEQUENCES TO postgres;
-ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON ROUTINES TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions 
+GRANT ALL ON ROUTINES TO postgres;
+```
 
-       
+---
 
+### **9. Application Configuration**
+
+* Update DB secrets (username/password) at the application level.
+* Regenerate and share connection strings using new user credentials.
+* Secure credentials in a vault (e.g., Azure Key Vault).
+
+---
+
+### **10. Backup & Restore Consideration (RBAC Note)**
+
+#### ✅ **Observed Issue**:
+
+While attempting to **back up and restore** the existing database to a new one using the **admin user (e.g., `postgres`)**, the operation **initially failed** because **some database objects (like tables and sequences)** were created by **application-level users**.
+
+#### ❗ Root Cause:
+
+* Admin user (`postgres`) lacked ownership or sufficient privileges on objects created by the application user.
+
+#### 🛠️ **How to Handle This:**
+
+**Option A: Assign Ownership Temporarily (for backup)**
+
+```sql
+-- Switch ownership to postgres before backup
+ALTER TABLE <schema_name>.<table_name> OWNER TO postgres;
+```
+
+**Option B: Include All Roles During Backup**
+
+* Use `pg_dumpall` or `pg_dump` with role preservation flags and appropriate credentials.
+* Example:
+
+  ```bash
+  pg_dump -U postgres -Fc -d <db_name> --no-owner --no-acl > db_backup.dump
+  ```
+
+**Option C: Restore as Original Owner**
+
+* Ensure the user who created objects is present in the target DB before restore.
+* Or create a role with the same name and assign it ownership post-restore.
+
+**Recommendation:**
+
+* **Standardize object creation** by allowing only the admin or privileged role to create critical schema objects.
+* Application users should have limited DML privileges (SELECT/INSERT/UPDATE) but not DDL.
+
+---
+
+Let me know if you'd like this exported to a PDF, Word doc, or Markdown file for documentation purposes.
