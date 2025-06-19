@@ -1,0 +1,47 @@
+RBAC on Postgres Flexi Server
+•	Creation of the role <read-only>:
+query: CREATE ROLE <role-name >;
+•	Grant connects privilege to db for the role-name given
+query: GRANT CONNECT ON DATABASE “<db-name>” TO <role-name >;
+•	If there is a need to create a schema, if it is already created can skip this step:
+query: CREATE SCHEMA <Schema-name>;
+•	Grant necessary privilege on the schema for the role given:
+query: 
+	GRANT USAGE ON SCHEMA <schema-name> TO <role-name>
+	GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA <schema-name> TO <role-name>;
+	ALTER DEFAULT PRIVILEGES IN SCHEMA <schema-name> GRANT SELECT, , INSERT, UPDATE ON TABLES to <role-name>
+•	Creation of the user:
+query: CREATE USER <username> WITH PASSWORD '<password>';
+•	Granting role to the Users:
+query: GRANT <role-name> to <Username>;
+
+•	Revoke public access from the DB:
+query: REVOKE CONNECT ON DATABASE “<db-name>” FROM PUBLIC.
+	The above Query will restrict connections to other databases. Repeat this for each additional database (e.g., db, aggregate_scanning, i4qdb, etc.) for which we want to restrict access. This Query revokes the default connection privileges from the public role for those databases, except for the database where we are creating the users.
+
+	When we revoke connect privileges from the public role for other users, it restricts access for those users but does not impact the admin user'(postgres) ability to connect. The admin user will still retain full access to all databases.
+
+Note: After assigning the roles to the users; Kindly change the username and password for the respective DB secrets from the application level and share the connection strings .
+
+
+Created the roles, user and assignment by using the below queries:
+
+CREATE ROLE <rolename>;
+GRANT CONNECT ON DATABASE <db-name> TO <rolename>;
+
+GRANT USAGE ON SCHEMA public TO <rolename>;
+GRANT SELECT,INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO <rolename>;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT, UPDATE ON TABLES to <rolename>;
+
+
+CREATE USER <username> WITH PASSWORD <password>;
+GRANT <role-name> to <user-name>;
+
+On the Sequences and routines in schemas :
+GRANT ALL ON ALL SEQUENCES IN SCHEMA supabase_functions TO postgres;
+GRANT ALL ON ALL ROUTINES IN SCHEMA supabase_functions TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON SEQUENCES TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON ROUTINES TO postgres;
+
+       
+
